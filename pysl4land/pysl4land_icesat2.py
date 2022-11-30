@@ -32,6 +32,7 @@ See other source files for details
 # History:
 # Version 1.0 - Created.
 
+import sys
 import h5py
 import numpy
 import pandas
@@ -87,7 +88,7 @@ def get_beam_lst(input_file, strong_only, weak_only):
                 icesat2_beams_lst.append(icesat2_beam_name)
         icesat2_h5_file.close()
     
-    return icesat2_beams_lst
+    return icesat2_beams_lst, orientation
 
 
 def get_segment_polygons(latitude, longitude, along_size=100.0, across_size=13.0):
@@ -199,7 +200,7 @@ def get_segment_polygons(latitude, longitude, along_size=100.0, across_size=13.0
     return numpy.asarray(icesat2_polys_wgs84_gdf.geometry.values)
 
 
-def get_icesat2_alt08_beam_as_gdf(input_file, icesat2_beam_name, use_seg_polys=False, out_epsg_code=4326, strong_only=False, weak_only=False):
+def get_icesat2_alt08_beam_as_gdf(input_file, icesat2_beam_name, orientation, use_seg_polys=False, out_epsg_code=4326, use_20m_segments=False):
     """
 
     :param input_file:
@@ -208,14 +209,9 @@ def get_icesat2_alt08_beam_as_gdf(input_file, icesat2_beam_name, use_seg_polys=F
     :param out_epsg_code:
     :return:
     """
-    icesat2_beams = get_beam_lst(input_file, strong_only, weak_only)
-    if icesat2_beam_name not in icesat2_beams:
-        raise Exception("Beam '{}' is not available within the file: {}".format(icesat2_beam_name, input_file))
-
     icesat2_h5_file = h5py.File(input_file, 'r')
     if icesat2_h5_file is None:
         raise Exception("Could not open the input ICESAT2 file.")
-    
     
     icesat2_beam = icesat2_h5_file[icesat2_beam_name]
     icesat2_beam_keys = list(icesat2_beam.keys())
@@ -241,107 +237,155 @@ def get_icesat2_alt08_beam_as_gdf(input_file, icesat2_beam_name, use_seg_polys=F
     utc_delta_time = [datetime(1980, 1, 6) + timedelta(seconds=x - (37 - 19)) for x in gps_epoch_delta_time]
     utc_time = [x.strftime("%Y.%m.%d_%H.%M.%S") for x in utc_delta_time]
     
-    
-    icesat2_beam_df = pandas.DataFrame({
-        'asr'                      : icesat2_land_beam['asr'],
-        'atlas_pa'                 : icesat2_land_beam['atlas_pa'],
-        'beam_azimuth'             : icesat2_land_beam['beam_azimuth'],
-        'beam_coelev'              : icesat2_land_beam['beam_coelev'],
-        'brightness_flag'          : icesat2_land_beam['brightness_flag'],
-        'delta_time'               : icesat2_land_beam['delta_time'],
-        'segment_time_utc_ymd_hms' : utc_time,
-        'delta_time_beg'           : icesat2_land_beam['delta_time_beg'],
-        'delta_time_end'           : icesat2_land_beam['delta_time_end'],
-        'dem_flag'                 : icesat2_land_beam['dem_flag'],
-        'dem_h'                    : icesat2_land_beam['dem_h'],
-        'dem_removal_flag'         : icesat2_land_beam['dem_removal_flag'],
-        'h_dif_ref'                : icesat2_land_beam['h_dif_ref'],
-        'last_seg_extend'          : icesat2_land_beam['last_seg_extend'],
-        'latitude'                 : icesat2_land_beam['latitude'],
-        'longitude'                : icesat2_land_beam['longitude'],
-        'layer_flag'               : icesat2_land_beam['layer_flag'],
-        'msw_flag'                 : icesat2_land_beam['msw_flag'],
-        'night_flag'               : icesat2_land_beam['night_flag'],
-        'n_seg_ph'                 : icesat2_land_beam['n_seg_ph'],
-        'ph_ndx_beg'               : icesat2_land_beam['ph_ndx_beg'],
-        'ph_removal_flag'          : icesat2_land_beam['ph_removal_flag'],
-        'psf_flag'                 : icesat2_land_beam['psf_flag'],
-        'rgt'                      : icesat2_land_beam['rgt'],
-        'segment_id_beg'           : icesat2_land_beam['segment_id_beg'],
-        'segment_id_end'           : icesat2_land_beam['segment_id_end'],
-        'segment_landcover'        : icesat2_land_beam['segment_landcover'],
-        'segment_snowcover'        : icesat2_land_beam['segment_snowcover'],
-        'segment_watermask'        : icesat2_land_beam['segment_watermask'],
-        'sigma_across'             : icesat2_land_beam['sigma_across'],
-        'sigma_along'              : icesat2_land_beam['sigma_along'],
-        'sigma_atlas_land'         : icesat2_land_beam['sigma_atlas_land'],
-        'sigma_h'                  : icesat2_land_beam['sigma_h'],
-        'sigma_topo'               : icesat2_land_beam['sigma_topo'],
-        'snr'                      : icesat2_land_beam['snr'],
-        'solar_azimuth'            : icesat2_land_beam['solar_azimuth'],
-        'solar_elevation'          : icesat2_land_beam['solar_elevation'],
-        'terrain_flg'              : icesat2_land_beam['terrain_flg'],
-        'urban_flag'               : icesat2_land_beam['urban_flag'],
-        'segment_cover'              : icesat2_beam_canopy['segment_cover'],
-        'canopy_openness'          : icesat2_beam_canopy['canopy_openness'],
-        'canopy_rh_conf'           : icesat2_beam_canopy['canopy_rh_conf'],
-        'centroid_height'          : icesat2_beam_canopy['centroid_height'],
-        'h_canopy'                 : icesat2_beam_canopy['h_canopy'],
-        'h_canopy_abs'             : icesat2_beam_canopy['h_canopy_abs'],
-        'h_canopy_quad'            : icesat2_beam_canopy['h_canopy_quad'],
-        'h_canopy_uncertainty'     : icesat2_beam_canopy['h_canopy_uncertainty'],
-        'h_dif_canopy'             : icesat2_beam_canopy['h_dif_canopy'],
-        'h_max_canopy'             : icesat2_beam_canopy['h_max_canopy'],
-        'h_max_canopy_abs'         : icesat2_beam_canopy['h_max_canopy_abs'],
-        'h_mean_canopy'            : icesat2_beam_canopy['h_mean_canopy'],
-        'h_mean_canopy_abs'        : icesat2_beam_canopy['h_mean_canopy_abs'],
-        'h_median_canopy'          : icesat2_beam_canopy['h_median_canopy'],
-        'h_median_canopy_abs'      : icesat2_beam_canopy['h_median_canopy_abs'],
-        'h_min_canopy'             : icesat2_beam_canopy['h_min_canopy'],
-        'h_min_canopy_abs'         : icesat2_beam_canopy['h_min_canopy_abs'],
-        #'landsat_flag'             : icesat2_beam_canopy['landsat_flag'],
-        #'landsat_perc'             : icesat2_beam_canopy['landsat_perc'],
-        'n_ca_photons'             : icesat2_beam_canopy['n_ca_photons'],
-        'n_toc_photons'            : icesat2_beam_canopy['n_toc_photons'],
-        'toc_roughness'            : icesat2_beam_canopy['toc_roughness'],
-        'canopy_h_metrics_rh25'    : icesat2_beam_canopy['canopy_h_metrics'][:, 0],
-        'canopy_h_metrics_rh50'    : icesat2_beam_canopy['canopy_h_metrics'][:, 1],
-        'canopy_h_metrics_rh60'    : icesat2_beam_canopy['canopy_h_metrics'][:, 2],
-        'canopy_h_metrics_rh70'    : icesat2_beam_canopy['canopy_h_metrics'][:, 3],
-        'canopy_h_metrics_rh75'    : icesat2_beam_canopy['canopy_h_metrics'][:, 4],
-        'canopy_h_metrics_rh80'    : icesat2_beam_canopy['canopy_h_metrics'][:, 5],
-        'canopy_h_metrics_rh85'    : icesat2_beam_canopy['canopy_h_metrics'][:, 6],
-        'canopy_h_metrics_rh90'    : icesat2_beam_canopy['canopy_h_metrics'][:, 7],
-        'canopy_h_metrics_rh95'    : icesat2_beam_canopy['canopy_h_metrics'][:, 8],
-        'canopy_h_metrics_abs_rh25': icesat2_beam_canopy['canopy_h_metrics_abs'][:, 0],
-        'canopy_h_metrics_abs_rh50': icesat2_beam_canopy['canopy_h_metrics_abs'][:, 1],
-        'canopy_h_metrics_abs_rh60': icesat2_beam_canopy['canopy_h_metrics_abs'][:, 2],
-        'canopy_h_metrics_abs_rh70': icesat2_beam_canopy['canopy_h_metrics_abs'][:, 3],
-        'canopy_h_metrics_abs_rh75': icesat2_beam_canopy['canopy_h_metrics_abs'][:, 4],
-        'canopy_h_metrics_abs_rh80': icesat2_beam_canopy['canopy_h_metrics_abs'][:, 5],
-        'canopy_h_metrics_abs_rh85': icesat2_beam_canopy['canopy_h_metrics_abs'][:, 6],
-        'canopy_h_metrics_abs_rh90': icesat2_beam_canopy['canopy_h_metrics_abs'][:, 7],
-        'canopy_h_metrics_abs_rh95': icesat2_beam_canopy['canopy_h_metrics_abs'][:, 8],
-        'h_te_best_fit'            : icesat2_beam_terrain['h_te_best_fit'],
-        'h_te_interp'              : icesat2_beam_terrain['h_te_interp'],
-        'h_te_max'                 : icesat2_beam_terrain['h_te_max'],
-        'h_te_mean'                : icesat2_beam_terrain['h_te_mean'],
-        'h_te_median'              : icesat2_beam_terrain['h_te_median'],
-        'h_te_min'                 : icesat2_beam_terrain['h_te_min'],
-        'h_te_mode'                : icesat2_beam_terrain['h_te_mode'],
-        'h_te_skew'                : icesat2_beam_terrain['h_te_skew'],
-        'h_te_std'                 : icesat2_beam_terrain['h_te_std'],
-        'h_te_uncertainty'         : icesat2_beam_terrain['h_te_uncertainty'],
-        'n_te_photons'             : icesat2_beam_terrain['n_te_photons'],
-        'terrain_slope'            : icesat2_beam_terrain['terrain_slope']
-    })
-    
-    
-    
+    if use_20m_segments:
+        along_size = 20.0
+        nsegments = 5
+    else:
+        along_size = 100.0
+        nsegments = 1
+
+    icesat2_segment_list = []
+    for i in range(nsegments):
+       
+        if use_20m_segments:
+            latitude = icesat2_land_beam['latitude_20m'][:,i]
+            longitude = icesat2_land_beam['longitude_20m'][:,i]
+            h_canopy = icesat2_beam_canopy['h_canopy_20m'][:,i]
+            h_te_best_fit = icesat2_beam_terrain['h_te_best_fit_20m'][:,i]
+        else:
+            latitude = icesat2_land_beam['latitude']
+            longitude = icesat2_land_beam['longitude']
+            h_canopy = icesat2_beam_canopy['h_canopy']
+            h_te_best_fit = icesat2_beam_terrain['h_te_best_fit']    
+
+        icesat2_beam_df = pandas.DataFrame({
+            'beam'                     : icesat2_beam_name,
+            'orientation'              : orientation,     
+            'asr'                      : icesat2_land_beam['asr'],
+            'atlas_pa'                 : icesat2_land_beam['atlas_pa'],
+            'beam_azimuth'             : icesat2_land_beam['beam_azimuth'],
+            'beam_coelev'              : icesat2_land_beam['beam_coelev'],
+            'brightness_flag'          : icesat2_land_beam['brightness_flag'],
+            'delta_time'               : icesat2_land_beam['delta_time'],
+            'segment_time_utc_ymd_hms' : utc_time,
+            'delta_time_beg'           : icesat2_land_beam['delta_time_beg'],
+            'delta_time_end'           : icesat2_land_beam['delta_time_end'],
+            'dem_flag'                 : icesat2_land_beam['dem_flag'],
+            'dem_h'                    : icesat2_land_beam['dem_h'],
+            'dem_removal_flag'         : icesat2_land_beam['dem_removal_flag'],
+            'h_dif_ref'                : icesat2_land_beam['h_dif_ref'],
+            'last_seg_extend'          : icesat2_land_beam['last_seg_extend'],
+            'latitude'                 : latitude,
+            'longitude'                : longitude,
+            'layer_flag'               : icesat2_land_beam['layer_flag'],
+            'msw_flag'                 : icesat2_land_beam['msw_flag'],
+            'night_flag'               : icesat2_land_beam['night_flag'],
+            'n_seg_ph'                 : icesat2_land_beam['n_seg_ph'],
+            'ph_ndx_beg'               : icesat2_land_beam['ph_ndx_beg'],
+            'ph_removal_flag'          : icesat2_land_beam['ph_removal_flag'],
+            'psf_flag'                 : icesat2_land_beam['psf_flag'],
+            'rgt'                      : icesat2_land_beam['rgt'],
+            'segment_id'               : icesat2_land_beam['segment_id_beg'][()] + i,
+            'segment_id_beg'           : icesat2_land_beam['segment_id_beg'],
+            'segment_id_end'           : icesat2_land_beam['segment_id_end'],
+            'segment_landcover'        : icesat2_land_beam['segment_landcover'],
+            'segment_snowcover'        : icesat2_land_beam['segment_snowcover'],
+            'segment_watermask'        : icesat2_land_beam['segment_watermask'],
+            'sigma_across'             : icesat2_land_beam['sigma_across'],
+            'sigma_along'              : icesat2_land_beam['sigma_along'],
+            'sigma_atlas_land'         : icesat2_land_beam['sigma_atlas_land'],
+            'sigma_h'                  : icesat2_land_beam['sigma_h'],
+            'sigma_topo'               : icesat2_land_beam['sigma_topo'],
+            'snr'                      : icesat2_land_beam['snr'],
+            'solar_azimuth'            : icesat2_land_beam['solar_azimuth'],
+            'solar_elevation'          : icesat2_land_beam['solar_elevation'],
+            'terrain_flg'              : icesat2_land_beam['terrain_flg'],
+            'urban_flag'               : icesat2_land_beam['urban_flag'],
+            'segment_cover'            : icesat2_beam_canopy['segment_cover'],
+            'canopy_openness'          : icesat2_beam_canopy['canopy_openness'],
+            'canopy_rh_conf'           : icesat2_beam_canopy['canopy_rh_conf'],
+            'centroid_height'          : icesat2_beam_canopy['centroid_height'],
+            'h_canopy'                 : h_canopy,
+            'h_canopy_abs'             : icesat2_beam_canopy['h_canopy_abs'],
+            'h_canopy_quad'            : icesat2_beam_canopy['h_canopy_quad'],
+            'h_canopy_uncertainty'     : icesat2_beam_canopy['h_canopy_uncertainty'],
+            'h_dif_canopy'             : icesat2_beam_canopy['h_dif_canopy'],
+            'h_max_canopy'             : icesat2_beam_canopy['h_max_canopy'],
+            'h_max_canopy_abs'         : icesat2_beam_canopy['h_max_canopy_abs'],
+            'h_mean_canopy'            : icesat2_beam_canopy['h_mean_canopy'],
+            'h_mean_canopy_abs'        : icesat2_beam_canopy['h_mean_canopy_abs'],
+            'h_median_canopy'          : icesat2_beam_canopy['h_median_canopy'],
+            'h_median_canopy_abs'      : icesat2_beam_canopy['h_median_canopy_abs'],
+            'h_min_canopy'             : icesat2_beam_canopy['h_min_canopy'],
+            'h_min_canopy_abs'         : icesat2_beam_canopy['h_min_canopy_abs'],
+            #'landsat_flag'             : icesat2_beam_canopy['landsat_flag'],
+            #'landsat_perc'             : icesat2_beam_canopy['landsat_perc'],
+            'n_ca_photons'             : icesat2_beam_canopy['n_ca_photons'],
+            'n_toc_photons'            : icesat2_beam_canopy['n_toc_photons'],
+            'toc_roughness'            : icesat2_beam_canopy['toc_roughness'],
+            'canopy_h_metrics_rh10'    : icesat2_beam_canopy['canopy_h_metrics'][:, 0],
+            'canopy_h_metrics_rh15'    : icesat2_beam_canopy['canopy_h_metrics'][:, 1],
+            'canopy_h_metrics_rh20'    : icesat2_beam_canopy['canopy_h_metrics'][:, 2],
+            'canopy_h_metrics_rh25'    : icesat2_beam_canopy['canopy_h_metrics'][:, 3],
+            'canopy_h_metrics_rh30'    : icesat2_beam_canopy['canopy_h_metrics'][:, 4],
+            'canopy_h_metrics_rh35'    : icesat2_beam_canopy['canopy_h_metrics'][:, 5],
+            'canopy_h_metrics_rh40'    : icesat2_beam_canopy['canopy_h_metrics'][:, 6],
+            'canopy_h_metrics_rh45'    : icesat2_beam_canopy['canopy_h_metrics'][:, 7],
+            'canopy_h_metrics_rh50'    : icesat2_beam_canopy['canopy_h_metrics'][:, 8],
+            'canopy_h_metrics_rh55'    : icesat2_beam_canopy['canopy_h_metrics'][:, 9],
+            'canopy_h_metrics_rh60'    : icesat2_beam_canopy['canopy_h_metrics'][:, 10],
+            'canopy_h_metrics_rh65'    : icesat2_beam_canopy['canopy_h_metrics'][:, 11],
+            'canopy_h_metrics_rh70'    : icesat2_beam_canopy['canopy_h_metrics'][:, 12],
+            'canopy_h_metrics_rh75'    : icesat2_beam_canopy['canopy_h_metrics'][:, 13],
+            'canopy_h_metrics_rh80'    : icesat2_beam_canopy['canopy_h_metrics'][:, 14],
+            'canopy_h_metrics_rh85'    : icesat2_beam_canopy['canopy_h_metrics'][:, 15],
+            'canopy_h_metrics_rh90'    : icesat2_beam_canopy['canopy_h_metrics'][:, 16],
+            'canopy_h_metrics_rh95'    : icesat2_beam_canopy['canopy_h_metrics'][:, 17],
+            'canopy_h_metrics_abs_rh10': icesat2_beam_canopy['canopy_h_metrics_abs'][:, 0],
+            'canopy_h_metrics_abs_rh15': icesat2_beam_canopy['canopy_h_metrics_abs'][:, 1],
+            'canopy_h_metrics_abs_rh20': icesat2_beam_canopy['canopy_h_metrics_abs'][:, 2],
+            'canopy_h_metrics_abs_rh25': icesat2_beam_canopy['canopy_h_metrics_abs'][:, 3],
+            'canopy_h_metrics_abs_rh30': icesat2_beam_canopy['canopy_h_metrics_abs'][:, 4],
+            'canopy_h_metrics_abs_rh35': icesat2_beam_canopy['canopy_h_metrics_abs'][:, 5],
+            'canopy_h_metrics_abs_rh40': icesat2_beam_canopy['canopy_h_metrics_abs'][:, 6],
+            'canopy_h_metrics_abs_rh45': icesat2_beam_canopy['canopy_h_metrics_abs'][:, 7],
+            'canopy_h_metrics_abs_rh50': icesat2_beam_canopy['canopy_h_metrics_abs'][:, 8],
+            'canopy_h_metrics_abs_rh55': icesat2_beam_canopy['canopy_h_metrics_abs'][:, 9],
+            'canopy_h_metrics_abs_rh60': icesat2_beam_canopy['canopy_h_metrics_abs'][:, 10],
+            'canopy_h_metrics_abs_rh65': icesat2_beam_canopy['canopy_h_metrics_abs'][:, 11],
+            'canopy_h_metrics_abs_rh70': icesat2_beam_canopy['canopy_h_metrics_abs'][:, 12],
+            'canopy_h_metrics_abs_rh75': icesat2_beam_canopy['canopy_h_metrics_abs'][:, 13],
+            'canopy_h_metrics_abs_rh80': icesat2_beam_canopy['canopy_h_metrics_abs'][:, 14],
+            'canopy_h_metrics_abs_rh85': icesat2_beam_canopy['canopy_h_metrics_abs'][:, 15],
+            'canopy_h_metrics_abs_rh90': icesat2_beam_canopy['canopy_h_metrics_abs'][:, 16],
+            'canopy_h_metrics_abs_rh95': icesat2_beam_canopy['canopy_h_metrics_abs'][:, 17],
+            'h_te_best_fit'            : h_te_best_fit,
+            'h_te_interp'              : icesat2_beam_terrain['h_te_interp'],
+            'h_te_max'                 : icesat2_beam_terrain['h_te_max'],
+            'h_te_mean'                : icesat2_beam_terrain['h_te_mean'],
+            'h_te_median'              : icesat2_beam_terrain['h_te_median'],
+            'h_te_min'                 : icesat2_beam_terrain['h_te_min'],
+            'h_te_mode'                : icesat2_beam_terrain['h_te_mode'],
+            'h_te_skew'                : icesat2_beam_terrain['h_te_skew'],
+            'h_te_std'                 : icesat2_beam_terrain['h_te_std'],
+            'h_te_uncertainty'         : icesat2_beam_terrain['h_te_uncertainty'],
+            'n_te_photons'             : icesat2_beam_terrain['n_te_photons'],
+            'terrain_slope'            : icesat2_beam_terrain['terrain_slope']
+        })
+
+        if use_20m_segments:
+            null = icesat2_land_beam['latitude_20m'].attrs['_FillValue'][0]
+            valid = (latitude != null) & (longitude != null)
+            icesat2_beam_df = icesat2_beam_df[valid]
+   
+        icesat2_segment_list.append(icesat2_beam_df)
+
+    icesat2_beam_df = pandas.concat(icesat2_segment_list, ignore_index=True)
+    icesat2_beam_df.sort_values(by='segment_id', inplace=True)
     if use_seg_polys:
-        latitude_arr = numpy.array(icesat2_land_beam['latitude'])
-        longitude_arr = numpy.array(icesat2_land_beam['longitude'])
-        polys = get_segment_polygons(latitude_arr, longitude_arr, along_size=100.0, across_size=13.0)
+        latitude_arr = icesat2_beam_df.latitude.to_numpy()
+        longitude_arr = icesat2_beam_df.longitude.to_numpy()
+        polys = get_segment_polygons(latitude_arr, longitude_arr, along_size=along_size, across_size=13.0)
         icesat2_beam_gdf = geopandas.GeoDataFrame(icesat2_beam_df, crs='EPSG:4326', geometry=polys)
     else:
         icesat2_beam_gdf = geopandas.GeoDataFrame(icesat2_beam_df, crs='EPSG:4326',
@@ -355,7 +399,8 @@ def get_icesat2_alt08_beam_as_gdf(input_file, icesat2_beam_name, use_seg_polys=F
     return icesat2_beam_gdf
 
 
-def icesat2_alt08_beams_gpkg(input_file, out_vec_file, use_seg_polys=False, out_epsg_code=4326, strong_only=False, weak_only=False):
+def icesat2_alt08_beams_gpkg(input_file, out_vec_file, use_seg_polys=False, out_epsg_code=4326, strong_only=False, 
+    weak_only=False, use_20m_segments=False):
     """
     A function which converts all the beams to a GPKG vector file with each beam as a different
     layer within the vector file.
@@ -369,11 +414,12 @@ def icesat2_alt08_beams_gpkg(input_file, out_vec_file, use_seg_polys=False, out_
                           default is EPSG:4326
 
     """
-    icesat2_beams = get_beam_lst(input_file, strong_only, weak_only)
+    icesat2_beams,orientation = get_beam_lst(input_file, strong_only, weak_only)
     print(icesat2_beams)
     for icesat2_beam_name in icesat2_beams:
         logger.info("Processing beam '{}'".format(icesat2_beam_name))
-        icesat2_beam_gdf = get_icesat2_alt08_beam_as_gdf(input_file, icesat2_beam_name, use_seg_polys, out_epsg_code)
+        icesat2_beam_gdf = get_icesat2_alt08_beam_as_gdf(input_file, icesat2_beam_name, orientation, use_seg_polys, 
+            out_epsg_code, use_20m_segments)
         icesat2_beam_gdf.to_file(out_vec_file, layer=icesat2_beam_name, driver="GPKG")
         logger.info("Finished processing beam '{}'".format(icesat2_beam_name))
 
