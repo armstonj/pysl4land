@@ -374,7 +374,9 @@ def get_icesat2_alt08_beam_as_gdf(input_file, icesat2_beam_name, orientation, us
         })
 
         if use_20m_segments:
-            null = icesat2_land_beam['latitude_20m'].attrs['_FillValue'][0]
+            null = icesat2_land_beam['latitude_20m'].attrs['_FillValue']
+            if isinstance(null, (list,numpy.ndarray)):
+                null = null[0]
             valid = (latitude != null) & (longitude != null)
             icesat2_beam_df = icesat2_beam_df[valid]
    
